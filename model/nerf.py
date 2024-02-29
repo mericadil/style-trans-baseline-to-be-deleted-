@@ -152,7 +152,8 @@ class MLPNet(nn.Module):
         '''
         :return [..., 4]
         '''
-        x0 = self.linear0(world_pts)
+        B, N, D = world_pts.shape
+        x0 = self.linear0(world_pts.float())
 
         # Block 1
         z1 = self.z_linear1(latent)
@@ -178,7 +179,7 @@ class MLPNet(nn.Module):
             base_remap = self.base_remap_layers(x4)
             z3 = self.z_linear3(latent)
             base_remap = base_remap + z3
-            rgb0 = self.rgb_layer0(torch.cat((base_remap, target_viewdirs), dim=-1))
+            rgb0 = self.rgb_layer0(torch.cat((base_remap, target_viewdirs.float()), dim=-1))
             rgb1 = self.rgb_layer1(rgb0)
 
 	    # For RGB branch

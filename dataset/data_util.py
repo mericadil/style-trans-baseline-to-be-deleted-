@@ -110,9 +110,24 @@ class RaySamplerSingleImage(object):
         else:
             self.style_img_path = np.random.choice(self.style_imgs, 1)[0]
         
-        ori_style_img = Image.open(self.style_img_path).convert('RGB')
+        self.style_img_path_orig = self.style_img_path
+        if self.style_img_path == '/mnt/hdd/data/wikiart/Post_Impressionism/vincent-van-gogh_l-arlesienne-portrait-of-madame-ginoux-1890.jpg':
+            self.style_img_path = '/mnt/hdd/data/wikiart/Post_Impressionism/vincent-van-gogh_l-arlesienne-portrait-of-madame-ginoux-1890-1.jpg'
+            
+        while True:
+            try:
+                ori_style_img = Image.open(self.style_img_path).convert('RGB')
+                break
+            except:
+                if mode == "test":
+                    self.style_img_path = random.sample(self.style_imgs, 1)[0]
+                    self.style_img_path_orig = self.style_img_path
+                else:
+                    self.style_img_path = np.random.choice(self.style_imgs, 1)[0]
+                    self.style_img_path_orig = self.style_img_path
+                    
         style_img = data_transform(ori_style_img)
-        style_idx = torch.from_numpy(np.array([self.style_imgs.index(self.style_img_path)]))
+        style_idx = torch.from_numpy(np.array([self.style_imgs.index(self.style_img_path_orig)]))
         
         return style_img, style_idx
 
@@ -128,7 +143,7 @@ class RaySamplerSingleImage(object):
         # return torch tensors
         for k in ret:
             if ret[k] is not None:
-                ret[k] = torch.from_numpy(ret[k])
+                ret[k] = torch.from_numpy(ret[k]).float()
         return ret
 
     def random_sample(self, N_rand, stage, center_crop=False):
@@ -185,6 +200,6 @@ class RaySamplerSingleImage(object):
         # return torch tensors
         for k in ret:
             if isinstance(ret[k], np.ndarray):
-                ret[k] = torch.from_numpy(ret[k])
+                ret[k] = torch.from_numpy(ret[k]).float()
 
         return ret

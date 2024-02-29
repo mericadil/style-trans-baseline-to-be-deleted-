@@ -8,13 +8,14 @@ import os
 from collections import OrderedDict
 from model.model import StyleNeRFpp
 import time
-from dataset.dataloader import load_data_split
+from dataset.dataloader import load_data_split, load_data_split_custom
 import numpy as np
 from tensorboardX import SummaryWriter
 from utils import *
 import logging
 import json
 from shutil import copyfile, copytree 
+import imageio
 
 logger = logging.getLogger(__package__)
 
@@ -253,18 +254,31 @@ def render_single_image(rank, world_size, models, ray_sampler, chunk_size, test_
 
 def log_view_to_tb(writer, global_step, log_data, gt_img, style_img, mask, prefix=''):
     rgb_im = img_HWC2CHW(torch.from_numpy(gt_img))
+   
+    out_root = '/home/meric/baselines/Stylizing-3D-Scene/out/trex'
+    out_dir = out_root + '/' + prefix
+    
     writer.add_image(prefix + 'rgb_gt', rgb_im, global_step)
     style_img = img_HWC2CHW(torch.from_numpy(style_img))
     writer.add_image(prefix + 'style_img', style_img, global_step)
 
     for m in range(len(log_data)):
+        
         rgb_im = img_HWC2CHW(log_data[m]['rgb'])
         rgb_im = torch.clamp(rgb_im, min=0., max=1.)  # just in case diffuse+specular>1
+        
+        rgb_save = (rgb_im * 255.).permute((1, 2, 0)).detach().cpu().numpy().astype(np.uint8)
+        imageio.imwrite(out_dir + '/{:10d}'.format(global_step) + 'img.png', rgb_save)
+        
         writer.add_image(prefix + 'level_{}/rgb'.format(m), rgb_im, global_step)
 
         rgb_im = img_HWC2CHW(log_data[m]['fg_rgb'])
         rgb_im = torch.clamp(rgb_im, min=0., max=1.)  # just in case diffuse+specular>1
         writer.add_image(prefix + 'level_{}/fg_rgb'.format(m), rgb_im, global_step)
+        
+        rgb_save = (rgb_im * 255.).permute((1, 2, 0)).detach().cpu().numpy().astype(np.uint8)
+        imageio.imwrite(out_dir + '/{:10d}'.format(global_step) + 'fg.png', rgb_save)
+        
         depth = log_data[m]['fg_depth']
         depth_im = img_HWC2CHW(colorize(depth, cmap_name='jet', append_cbar=True,
                                         mask=mask))
@@ -273,6 +287,10 @@ def log_view_to_tb(writer, global_step, log_data, gt_img, style_img, mask, prefi
         rgb_im = img_HWC2CHW(log_data[m]['bg_rgb'])
         rgb_im = torch.clamp(rgb_im, min=0., max=1.)  # just in case diffuse+specular>1
         writer.add_image(prefix + 'level_{}/bg_rgb'.format(m), rgb_im, global_step)
+        
+        rgb_save = (rgb_im * 255.).permute((1, 2, 0)).detach().cpu().numpy().astype(np.uint8)
+        imageio.imwrite(out_dir + '/{:10d}'.format(global_step) + 'bg.png', rgb_save)
+        
         depth = log_data[m]['bg_depth']
         depth_im = img_HWC2CHW(colorize(depth, cmap_name='jet', append_cbar=True,
                                         mask=mask))
@@ -387,7 +405,7 @@ def ddp_train_nerf(rank, args):
     else:
         logger.info('setting batch size according to 12G gpu')
         args.N_rand = 2048
-        args.chunk_size = 8192
+        args.chunk_size = 4096#8192
 
     ###### Create log dir and copy the config file
     if rank == 0:
@@ -411,10 +429,12 @@ def ddp_train_nerf(rank, args):
 
     torch.distributed.barrier()
 
-    ray_samplers = load_data_split(args.datadir, args.scene, split='train',
+    '''ray_samplers = load_data_split(args.datadir, args.scene, split='train',
                                    try_load_min_depth=args.load_min_depth, seed=777)
     val_ray_samplers = load_data_split(args.datadir, args.scene, split='validation',
-                                       try_load_min_depth=args.load_min_depth)
+                                       try_load_min_depth=args.load_min_depth)'''
+    
+    ray_samplers, val_ray_samplers = load_data_split_custom('trex')
                                        
 
     # write training image names for autoexposure
@@ -660,11 +680,13 @@ def train():
     if args.world_size == -1:
         args.world_size = torch.cuda.device_count()
         logger.info('Using # gpus: {}'.format(args.world_size))
-    torch.multiprocessing.spawn(ddp_train_nerf,
+    
+    ddp_train_nerf(0, args)
+    '''torch.multiprocessing.spawn(ddp_train_nerf,
                                 args=(args,),
                                 nprocs=args.world_size,
                                 join=True)
-
+    '''
 
 if __name__ == '__main__':
     train()
